@@ -17,7 +17,7 @@ Route::get('/', function () {
     return view('welcome');
 });
 
-Route::prefix('api')->group(function () {
+Route::prefix('v1')->group(function () {
 
     // ---------- Auth (publik) ----------
     Route::post('register', [AuthController::class, 'register']);
