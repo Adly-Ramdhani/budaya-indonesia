@@ -13,7 +13,7 @@ class Song extends Model
 
     protected $fillable = [
         'province_id', 'title', 'composer', 'language',
-        'description', 'lyrics', 'audio_path',
+        'description', 'lyrics', 'audio_path', 'status', 'published_at',
     ];
 
     protected $hidden = ['audio_path'];

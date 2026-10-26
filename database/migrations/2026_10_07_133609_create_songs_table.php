@@ -20,6 +20,8 @@ return new class extends Migration
             $table->text('description')->nullable();
             $table->text('lyrics')->nullable();
             $table->string('audio_path', 500)->nullable();
+            $table->string('status', 20)->default('draft')->index();
+            $table->timestamp('published_at')->nullable();
             $table->timestamps();
 
         });
