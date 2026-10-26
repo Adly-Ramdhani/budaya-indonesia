@@ -17,6 +17,8 @@ return new class extends Migration
             $table->string('name', 255);
             $table->text('description')->nullable();
             $table->string('image_path', 500)->nullable();
+            $table->string('status', 20)->default('draft')->index();
+            $table->timestamp('published_at')->nullable();
             $table->timestamps();
 
             $table->unique(['province_id', 'name']);

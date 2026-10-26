@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\PublishStatus;
 use App\Helpers\ApiFormatter;
 use App\Models\Dance;
 use Illuminate\Http\Request;
@@ -10,16 +11,14 @@ use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
-
-
 class DanceController extends Controller
 {
     /**
      * Display a listing of the resource.
      */
-    public function index(request $request)
+    public function index(Request $request)
     {
-            try {
+        try {
             $query = Dance::with('province:id,name,island_id')->orderBy('name');
 
             if ($request->filled('province_id')) {
@@ -34,6 +33,11 @@ class DanceController extends Controller
                 $query->where('name', 'ILIKE', '%' . $request->search . '%');
             }
 
+            // filter status hanya jika nilainya valid (draft / published)
+            if ($request->filled('status') && $status = PublishStatus::tryFrom($request->status)) {
+                $query->where('status', $status->value);
+            }
+
             return ApiFormatter::sendResponse(200, 'Success', $query->get());
         } catch (\Exception $e) {
             report($e);
@@ -43,42 +47,51 @@ class DanceController extends Controller
     }
 
     /**
-     * Show the form for creating a new resource.
-     */
-    public function create()
-    {
-        //
-    }
-
-    /**
      * Store a newly created resource in storage.
      */
     public function store(Request $request)
     {
-        $validator = Validator::make($request->all(), [
-            'province_id' => ['required', 'exists:provinces,id'],
-            'name'        => [
-                'required', 'string', 'max:255',
-                Rule::unique('dances')->where('province_id', $request->province_id),
-            ],
-            'description' => ['nullable', 'string'],
-            'history'     => ['nullable', 'string'],
-            'image'       => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:2048'], // maks 2 MB
-        ]);
+        try {
+            $validator = Validator::make($request->all(), [
+                'province_id'  => ['required', 'exists:provinces,id'],
+                'name'         => [ 'required', 'string', 'max:255'],
+                'description'  => ['nullable', 'string'],
+                'history'      => ['nullable', 'string'],
+                'image'        => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:2048'], // maks 2 MB
+                'status'       => ['nullable', Rule::enum(PublishStatus::class)],
+                'published_at' => ['nullable', 'date'],
+            ]);
 
-        if ($validator->fails()) {
-            return ApiFormatter::sendResponse(422, 'Validation failed', $validator->errors());
+            if ($validator->fails()) {
+                return ApiFormatter::sendResponse(422, 'Validation failed', $validator->errors());
+            }
+
+            $data = $validator->safe()->except('image');
+
+            // status default draft; published_at hanya terisi jika published
+            $status = PublishStatus::tryFrom($data['status'] ?? '') ?? PublishStatus::Draft;
+
+            $data['status'] = $status->value;
+            $data['published_at'] = $status === PublishStatus::Published
+                ? ($data['published_at'] ?? now())
+                : null;
+
+            if ($request->hasFile('image')) {
+                $data['image_path'] = $request->file('image')->store('dances', 'public');
+            }
+
+            $dance = Dance::create($data);
+
+            return ApiFormatter::sendResponse(
+                201,
+                'Dance created',
+                $dance->load('province:id,name,island_id')
+            );
+        } catch (\Exception $e) {
+            report($e);
+
+            return ApiFormatter::sendResponse(500, 'Failed to create dance', []);
         }
-
-        $data = $validator->safe()->except('image');
-
-        if ($request->hasFile('image')) {
-            $data['image_path'] = $request->file('image')->store('dances', 'public');
-        }
-
-        $dance = Dance::create($data);
-
-        return ApiFormatter::sendResponse(201, 'Dance created', $dance->load('province:id,name,island_id'));
     }
 
     /**
@@ -103,13 +116,6 @@ class DanceController extends Controller
 
             return ApiFormatter::sendResponse(500, 'Failed to retrieve dance', []);
         }
-}
-    /**
-     * Show the form for editing the specified resource.
-     */
-    public function edit(Dance $dance)
-    {
-        //
     }
 
     /**
@@ -131,14 +137,13 @@ class DanceController extends Controller
             $provinceId = $request->input('province_id', $dance->province_id);
 
             $validator = Validator::make($request->all(), [
-                'province_id' => ['sometimes', 'required', 'exists:provinces,id'],
-                'name'        => [
-                    'sometimes', 'required', 'string', 'max:255',
-                    Rule::unique('dances')->where('province_id', $provinceId)->ignore($dance->id),
-                ],
-                'description' => ['nullable', 'string'],
-                'history'     => ['nullable', 'string'],
-                'image'       => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:2048'],
+                'province_id'  => ['sometimes', 'required', 'exists:provinces,id'],
+                'name'         => ['sometimes', 'required', 'string', 'max:255',],
+                'description'  => ['nullable', 'string'],
+                'history'      => ['nullable', 'string'],
+                'image'        => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:2048'],
+                'status'       => ['sometimes', 'required', Rule::enum(PublishStatus::class)],
+                'published_at' => ['nullable', 'date'],
             ]);
 
             if ($validator->fails()) {
@@ -146,6 +151,19 @@ class DanceController extends Controller
             }
 
             $data = $validator->safe()->except('image');
+
+            if (isset($data['status'])) {
+                $status = PublishStatus::from($data['status']);
+
+                $data['status'] = $status->value;
+
+                if ($status === PublishStatus::Published) {
+                    // tanggal dari request, atau tanggal terbit lama, atau sekarang
+                    $data['published_at'] = $data['published_at'] ?? $dance->published_at ?? now();
+                } else {
+                    $data['published_at'] = null; // kembali ke draft
+                }
+            }
 
             if ($request->hasFile('image')) {
                 if ($dance->image_path) {

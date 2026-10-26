@@ -2,7 +2,9 @@
 
 namespace App\Models;
 
+use App\Enums\PublishStatus;
 use Illuminate\Database\Eloquent\Casts\Attribute;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -11,7 +13,15 @@ class Dance extends Model
 {
     use HasUuids;
 
-    protected $fillable = ['province_id', 'name', 'description', 'history', 'image_path'];
+    protected $fillable =  [
+    'province_id',
+     'name', 
+     'description', 
+     'history', 
+     'image_path',
+     'status',
+     'published_at'
+     ];
 
     protected $hidden = ['image_path'];
 
@@ -22,6 +32,11 @@ class Dance extends Model
         return Attribute::get(
             fn () => $this->image_path ? url('/media/' . $this->image_path) : null
         );
+    }
+
+    public function scopePublished(Builder $query): Builder
+    {
+        return $query->where('status', PublishStatus::Published->value);
     }
 
     public function province(): BelongsTo

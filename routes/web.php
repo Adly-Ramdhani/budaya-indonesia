@@ -4,6 +4,7 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\DanceController;
 use App\Http\Controllers\FoodController;
 use App\Http\Controllers\IslandController;
+use App\Http\Controllers\MusicalInstrumentController;
 use App\Http\Controllers\ProvinceController;
 use App\Http\Controllers\SongController;
 use App\Http\Controllers\TraditionalAttireController;
@@ -53,6 +54,9 @@ Route::prefix('api')->group(function () {
     Route::get('traditional-weapons', [TraditionalWeaponController::class, 'index']);
     Route::get('traditional-weapons/{id}', [TraditionalWeaponController::class, 'show']);
 
+    Route::get('musical-instruments', [MusicalInstrumentController::class, 'index']);
+    Route::get('musical-instruments/{id}', [MusicalInstrumentController::class, 'show']);
+
     // ---------- Khusus admin: tambah, ubah, hapus ----------
     Route::middleware(['auth:sanctum', 'admin'])->group(function () {
 
@@ -91,6 +95,15 @@ Route::prefix('api')->group(function () {
         Route::post('traditional-weapons', [TraditionalWeaponController::class, 'store']);
         Route::put('traditional-weapons/{id}', [TraditionalWeaponController::class, 'update']);
         Route::delete('traditional-weapons/{id}', [TraditionalWeaponController::class, 'destroy']);
+        Route::patch('traditional-weapons/{id}/publish', [TraditionalWeaponController::class, 'publish']);
+        Route::patch('traditional-weapons/{id}/unpublish', [TraditionalWeaponController::class, 'unpublish']);
+
+        Route::post('musical-instruments', [MusicalInstrumentController::class, 'store']);
+        Route::put('musical-instruments/{id}', [MusicalInstrumentController::class, 'update']);
+        Route::delete('musical-instruments/{id}', [MusicalInstrumentController::class, 'destroy']);
+        Route::patch('musical-instruments/{id}/publish', [MusicalInstrumentController::class, 'publish']);
+        Route::patch('musical-instruments/{id}/unpublish', [MusicalInstrumentController::class, 'unpublish']);
+
     });
 });
 
