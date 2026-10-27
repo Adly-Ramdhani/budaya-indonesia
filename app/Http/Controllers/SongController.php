@@ -13,7 +13,11 @@ use Illuminate\Validation\Rule;
 
 class SongController extends Controller
 {
-    private const STATUSES = ['draft', 'published'];
+    /** Disk penyimpanan audio (public di lokal, s3 di produksi). */
+    private function disk(): string
+    {
+        return config('filesystems.media_disk');
+    }
 
     public function index(Request $request)
     {
@@ -35,6 +39,7 @@ class SongController extends Controller
             if ($request->filled('search')) {
                 // escape karakter wildcard agar input "%" atau "_" tidak dianggap pola
                 $search = addcslashes($request->search, '%_\\');
+                // ILIKE khusus PostgreSQL. Untuk MySQL ganti dengan 'LIKE'.
                 $query->where('title', 'ILIKE', "%{$search}%");
             }
 
@@ -53,7 +58,9 @@ class SongController extends Controller
         try {
             $validator = Validator::make($request->all(), [
                 'province_id' => ['required', 'exists:provinces,id'],
-                'title'       => ['required', 'string', 'max:255'],
+                'title'       => [
+                    'required', 'string', 'max:255',
+                ],
                 'composer'    => ['nullable', 'string', 'max:255'],
                 'language'    => ['nullable', 'string', 'max:100'],
                 'description' => ['nullable', 'string'],
@@ -62,34 +69,38 @@ class SongController extends Controller
                 'audio'       => ['nullable', 'file', 'mimes:mp3,mpga,wav,ogg,m4a', 'max:10240'],
             ]);
 
-                if ($validator->fails()) {
-                    return ApiFormatter::sendResponse(422, 'Validation failed', $validator->errors());
-                }
+            if ($validator->fails()) {
+                return ApiFormatter::sendResponse(422, 'Validation failed', $validator->errors());
+            }
 
-                $data = $validator->safe()->except('audio');
+            $data = $validator->safe()->except('audio');
 
-                $status = PublishStatus::from($data['status']);
+            // status opsional: jika tidak dikirim, default ke Draft
+            // (sesuaikan nama case "Draft" dengan enum PublishStatus Anda)
+            $status = PublishStatus::tryFrom($data['status'] ?? '') ?? PublishStatus::Draft;
 
-                $data['status']       = $status->value;
-                $data['published_at'] = $status === PublishStatus::Published ? now() : null;
+            $data['status']       = $status->value;
+            $data['published_at'] = $status === PublishStatus::Published ? now() : null;
 
-                if ($request->hasFile('audio')) {
-                    $audioPath = $request->file('audio')->store('songs/audio', 'public');
-                    $data['audio_path'] = $audioPath;
-                }
+            if ($request->hasFile('audio')) {
+                $audioPath = $request->file('audio')->store('songs/audio', $this->disk());
+                $data['audio_path'] = $audioPath;
+            }
 
             $song = Song::create($data);
 
             return ApiFormatter::sendResponse(201, 'Song created', $song->load('province:id,name,island_id'));
-        } catch (\Exception $e) {
+               } catch (\Exception $e) {
             report($e);
 
             // hapus file yang sudah terlanjur diupload jika gagal menyimpan ke DB
             if ($audioPath) {
-                Storage::disk('public')->delete($audioPath);
+                Storage::disk($this->disk())->delete($audioPath);
             }
 
-            return ApiFormatter::sendResponse(500, 'Failed to create song', []);
+            report($e);
+
+            return ApiFormatter::sendResponse(500, 'Failed to retrieve traditional attire', $e->getMessage() ?: 'Terjadi kesalahan pada server, silakan coba lagi nanti.');
         }
     }
 
@@ -135,13 +146,13 @@ class SongController extends Controller
                 'province_id' => ['sometimes', 'required', 'exists:provinces,id'],
                 'title'       => [
                     'sometimes', 'required', 'string', 'max:255',
-                    Rule::unique('songs')->where('province_id', $provinceId)->ignore($song->id),
+         
                 ],
                 'composer'    => ['nullable', 'string', 'max:255'],
                 'language'    => ['nullable', 'string', 'max:100'],
                 'description' => ['nullable', 'string'],
                 'lyrics'      => ['nullable', 'string'],
-                'status'      => ['sometimes', 'required', Rule::in(self::STATUSES)],
+                'status'      => ['sometimes', 'required', Rule::enum(PublishStatus::class)],
                 'audio'       => ['nullable', 'file', 'mimes:mp3,mpga,wav,ogg,m4a', 'max:10240'],
             ]);
 
@@ -153,9 +164,12 @@ class SongController extends Controller
 
             // published_at diatur otomatis mengikuti perubahan status
             if (isset($data['status'])) {
-                if ($data['status'] === 'published' && $song->status !== 'published') {
-                    $data['published_at'] = now();
-                } elseif ($data['status'] !== 'published') {
+                $newStatus = PublishStatus::from($data['status']);
+
+                if ($newStatus === PublishStatus::Published) {
+                    // jangan timpa tanggal terbit jika sebelumnya sudah published
+                    $data['published_at'] = $song->published_at ?? now();
+                } else {
                     $data['published_at'] = null;
                 }
             }
@@ -163,7 +177,7 @@ class SongController extends Controller
             $oldAudioPath = $song->audio_path;
 
             if ($request->hasFile('audio')) {
-                $newAudioPath = $request->file('audio')->store('songs/audio', 'public');
+                $newAudioPath = $request->file('audio')->store('songs/audio', $this->disk());
                 $data['audio_path'] = $newAudioPath;
             }
 
@@ -171,7 +185,7 @@ class SongController extends Controller
 
             // hapus audio lama hanya setelah update ke DB berhasil
             if ($newAudioPath && $oldAudioPath) {
-                Storage::disk('public')->delete($oldAudioPath);
+                Storage::disk($this->disk())->delete($oldAudioPath);
             }
 
             return ApiFormatter::sendResponse(
@@ -183,7 +197,7 @@ class SongController extends Controller
             report($e);
 
             if ($newAudioPath) {
-                Storage::disk('public')->delete($newAudioPath);
+                Storage::disk($this->disk())->delete($newAudioPath);
             }
 
             return ApiFormatter::sendResponse(500, 'Failed to update song', []);
@@ -209,7 +223,7 @@ class SongController extends Controller
 
             // hapus file setelah data di DB berhasil dihapus
             if ($audioPath) {
-                Storage::disk('public')->delete($audioPath);
+                Storage::disk($this->disk())->delete($audioPath);
             }
 
             return ApiFormatter::sendResponse(200, 'Song deleted', null);

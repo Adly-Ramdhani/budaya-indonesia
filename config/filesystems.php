@@ -17,6 +17,18 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Media Disk (audio lagu)
+    |--------------------------------------------------------------------------
+    |
+    | Disk yang dipakai untuk menyimpan dan membuat URL file audio lagu.
+    | Lokal: "public". Produksi: "s3" (S3, Cloudflare R2, Supabase Storage).
+    |
+    */
+
+    'media_disk' => env('MEDIA_DISK', 'public'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Filesystem Disks
     |--------------------------------------------------------------------------
     |
