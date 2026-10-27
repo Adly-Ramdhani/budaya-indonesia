@@ -14,7 +14,10 @@ use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Storage;
 
 Route::get('/', function () {
-    return view('welcome');
+    return response()->json([
+        'status'  => 'ok',
+        'message' => 'Budaya Indonesia API',
+    ]);
 });
 
 Route::prefix('v1')->group(function () {
